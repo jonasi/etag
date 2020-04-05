@@ -101,6 +101,11 @@ func write(w io.Writer, b []byte) (int, error) {
 }
 
 func (w *rw) WriteHeader(status int) {
+	if w.disabled {
+		w.rw.WriteHeader(status)
+		return
+	}
+
 	w.status = status
 }
 
