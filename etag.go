@@ -26,13 +26,24 @@ func Handler(h http.Handler) http.Handler {
 			return
 		}
 
-		etag := hex.EncodeToString(bufw.hash.Sum(nil))
-		if v := r.Header.Get("If-None-Match"); v != "" && (r.Method == "HEAD" || r.Method == "GET") && etag == v {
+		var (
+			etag          = bufw.headers.Get("Etag")
+			etagSet       = etag != ""
+			statusSuccess = bufw.status == 0 || (bufw.status >= 200 && bufw.status < 300)
+		)
+
+		if !etagSet {
+			etag = hex.EncodeToString(bufw.hash.Sum(nil))
+		}
+
+		if v := r.Header.Get("If-None-Match"); v != "" && statusSuccess && (r.Method == "HEAD" || r.Method == "GET") && etag == v {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
 
-		w.Header().Set("etag", etag)
+		if !etagSet {
+			w.Header().Set("etag", etag)
+		}
 
 		if bufw.status != 0 {
 			w.WriteHeader(bufw.status)
