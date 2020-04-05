@@ -2,12 +2,20 @@ package etag
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"hash"
 	"io"
 	"net/http"
 )
+
+type ctx struct{}
+
+// Disable disables etag processing for this request
+func Disable(r *http.Request) {
+	r.Context().Value(ctx{}).(func())()
+}
 
 // Handler returns a new http.Handler that writes an etag header
 // based off the contents of the body
@@ -20,9 +28,11 @@ func Handler(h http.Handler) http.Handler {
 			buf:     bytes.NewBuffer(nil),
 		}
 
+		r = r.WithContext(context.WithValue(r.Context(), ctx{}, bufw.disable))
+
 		h.ServeHTTP(bufw, r)
 
-		if bufw.flushed {
+		if bufw.disabled {
 			return
 		}
 
@@ -57,16 +67,16 @@ func Handler(h http.Handler) http.Handler {
 }
 
 type rw struct {
-	headers http.Header
-	rw      http.ResponseWriter
-	hash    hash.Hash
-	buf     *bytes.Buffer
-	status  int
-	flushed bool
+	headers  http.Header
+	rw       http.ResponseWriter
+	hash     hash.Hash
+	buf      *bytes.Buffer
+	status   int
+	disabled bool
 }
 
 func (w *rw) Write(b []byte) (int, error) {
-	if w.flushed {
+	if w.disabled {
 		return w.rw.Write(b)
 	}
 
@@ -98,19 +108,24 @@ func (w *rw) Header() http.Header {
 	return w.headers
 }
 
+func (w *rw) disable() {
+	if w.disabled {
+		return
+	}
+
+	w.disabled = true
+	// if this is the first flush, immediately write
+	// any buffered data to the underlying rw and flip
+	// the bit so all future writes go to the underlying rw
+	if w.buf.Len() > 0 {
+		// todo(isao) - do something with this error?
+		_, _ = w.rw.Write(w.buf.Bytes())
+	}
+}
+
 func (w *rw) Flush() {
 	if f, ok := w.rw.(http.Flusher); ok {
-		// if this is the first flush, immediately write
-		// any buffered data to the underlying rw and flip
-		// the bit so all future writes go to the underlying rw
-		if !w.flushed {
-			if w.buf.Len() > 0 {
-				// todo(isao) - do something with this error?
-				w.rw.Write(w.buf.Bytes())
-			}
-			w.flushed = true
-		}
-
+		w.disable()
 		f.Flush()
 	}
 }
