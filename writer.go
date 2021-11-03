@@ -1,9 +1,12 @@
 package etag
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
 	"hash"
 	"io"
+	"net"
 	"net/http"
 )
 
@@ -76,7 +79,18 @@ func (w *rw) Flush() {
 	}
 }
 
+func (w *rw) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.rw.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("Underlying ResponseWriter is not a Hijacker")
+	}
+
+	w.disable()
+	return h.Hijack()
+}
+
 var (
 	_ http.ResponseWriter = &rw{}
 	_ http.Flusher        = &rw{}
+	_ http.Hijacker       = &rw{}
 )
