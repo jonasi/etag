@@ -41,7 +41,7 @@ func Handler(h http.Handler) http.Handler {
 		)
 
 		if !etagSet {
-			etag = hex.EncodeToString(bufw.hash.Sum(nil))
+			etag = `"` + hex.EncodeToString(bufw.hash.Sum(nil)) + `"`
 		}
 
 		if v := r.Header.Get("If-None-Match"); v != "" && statusSuccess && (r.Method == "HEAD" || r.Method == "GET") && etag == v {
@@ -50,7 +50,7 @@ func Handler(h http.Handler) http.Handler {
 		}
 
 		if !etagSet {
-			w.Header().Set("etag", `"`+etag+`"`)
+			w.Header().Set("etag", etag)
 		}
 
 		if bufw.status != 0 {
